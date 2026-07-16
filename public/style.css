@@ -91,6 +91,65 @@ button:hover {
   font-weight: 600;
 }
 
+.host-label {
+  font-weight: 700;
+  color: #4a2fb8;
+  margin: 0 0 20px;
+}
+
+.host-panel {
+  text-align: left;
+}
+
+.qa-block {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.qa-block label {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.qa-question {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.qa-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.qa-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qa-choice {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 13px;
+}
+
+#submit-questions-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
 .countdown-overlay {
   position: fixed;
   inset: 0;

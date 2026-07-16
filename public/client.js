@@ -16,7 +16,12 @@ const joinForm = document.getElementById('join-form');
 const nicknameInput = document.getElementById('nickname-input');
 const joinError = document.getElementById('join-error');
 const playerList = document.getElementById('player-list');
-const startBtn = document.getElementById('start-btn');
+const hostLabel = document.getElementById('host-label');
+const waitingForHost = document.getElementById('waiting-for-host');
+const hostPanel = document.getElementById('host-panel');
+const questionAuthorList = document.getElementById('question-author-list');
+const hostError = document.getElementById('host-error');
+const submitQuestionsBtn = document.getElementById('submit-questions-btn');
 const countdownOverlay = document.getElementById('countdown-overlay');
 const countdownValue = document.getElementById('countdown-value');
 const questionProgress = document.getElementById('question-progress');
@@ -33,6 +38,7 @@ let currentQuestionIndex = -1;
 let hasAnsweredThisQuestion = false;
 let questionTickInterval = null;
 let countdownTickInterval = null;
+let isHost = false;
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -49,17 +55,93 @@ socket.on('join:success', () => {
   showScreen('lobby');
 });
 
-socket.on('lobby:update', ({ players }) => {
+socket.on('lobby:update', ({ players, hostNickname }) => {
   playerList.innerHTML = '';
   players.forEach((name) => {
     const li = document.createElement('li');
-    li.textContent = name;
+    li.textContent = name === hostNickname ? `👑 ${name}` : name;
     playerList.appendChild(li);
   });
+
+  hostLabel.textContent = hostNickname ? `호스트: ${hostNickname}` : '';
+
+  if (!isHost) {
+    waitingForHost.classList.toggle('hidden', !hostNickname);
+  }
 });
 
-startBtn.addEventListener('click', () => {
-  socket.emit('startGame');
+socket.on('host:assigned', ({ questions }) => {
+  isHost = true;
+  waitingForHost.classList.add('hidden');
+  hostPanel.classList.remove('hidden');
+  hostError.classList.add('hidden');
+  renderAuthoringForm(questions);
+});
+
+socket.on('host:error', ({ message }) => {
+  hostError.textContent = message;
+  hostError.classList.remove('hidden');
+});
+
+function renderAuthoringForm(questions) {
+  questionAuthorList.innerHTML = '';
+  questions.forEach((q, qi) => {
+    const block = document.createElement('div');
+    block.className = 'qa-block';
+
+    const label = document.createElement('label');
+    label.textContent = `문제 ${qi + 1}`;
+    block.appendChild(label);
+
+    const questionInput = document.createElement('input');
+    questionInput.type = 'text';
+    questionInput.className = 'qa-question';
+    questionInput.maxLength = 200;
+    questionInput.value = q.question;
+    block.appendChild(questionInput);
+
+    const choicesWrap = document.createElement('div');
+    choicesWrap.className = 'qa-choices';
+
+    q.choices.forEach((choiceText, ci) => {
+      const row = document.createElement('div');
+      row.className = 'qa-choice-row';
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = `qa-correct-${qi}`;
+      radio.value = String(ci);
+      radio.checked = ci === q.answerIndex;
+      row.appendChild(radio);
+
+      const choiceInput = document.createElement('input');
+      choiceInput.type = 'text';
+      choiceInput.className = 'qa-choice';
+      choiceInput.maxLength = 60;
+      choiceInput.value = choiceText;
+      row.appendChild(choiceInput);
+
+      choicesWrap.appendChild(row);
+    });
+
+    block.appendChild(choicesWrap);
+    questionAuthorList.appendChild(block);
+  });
+}
+
+function collectQuestionsFromForm() {
+  return Array.from(questionAuthorList.children).map((block, qi) => {
+    const question = block.querySelector('.qa-question').value.trim();
+    const choices = Array.from(block.querySelectorAll('.qa-choice')).map((el) => el.value.trim());
+    const checkedRadio = block.querySelector(`input[name="qa-correct-${qi}"]:checked`);
+    const answerIndex = checkedRadio ? Number(checkedRadio.value) : -1;
+    return { question, choices, answerIndex };
+  });
+}
+
+submitQuestionsBtn.addEventListener('click', () => {
+  hostError.classList.add('hidden');
+  socket.emit('host:submitQuestions', { questions: collectQuestionsFromForm() });
 });
 
 socket.on('game:countdown', ({ duration }) => {

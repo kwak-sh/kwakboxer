@@ -13,7 +13,7 @@ const QUESTION_DURATION_MS = 15000;
 const REVEAL_DURATION_MS = 4000;
 const LOBBY_COUNTDOWN_MS = 3000;
 
-const QUESTIONS = [
+const DEFAULT_QUESTIONS = [
   {
     question: '태양계 행성 중 자전 방향이 다른 행성들과 반대인(역행 자전) 행성은?',
     choices: ['금성', '화성', '목성', '수성'],
@@ -41,11 +41,35 @@ const QUESTIONS = [
   },
 ];
 
+// the active question set for the round about to be/being played — replaced
+// whenever the host confirms their own set
+let QUESTIONS = DEFAULT_QUESTIONS.map((q) => ({ ...q, choices: [...q.choices] }));
+
+function sanitizeQuestions(raw) {
+  if (!Array.isArray(raw) || raw.length !== 5) return null;
+  const result = [];
+  for (const item of raw) {
+    const question = (item && item.question ? item.question : '').toString().trim().slice(0, 200);
+    const choicesRaw = item && Array.isArray(item.choices) ? item.choices : [];
+    const choices = choicesRaw.map((c) => (c || '').toString().trim().slice(0, 60));
+    const answerIndex = Number(item && item.answerIndex);
+
+    if (!question) return null;
+    if (choices.length !== 4 || choices.some((c) => !c)) return null;
+    if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3) return null;
+
+    result.push({ question, choices, answerIndex });
+  }
+  return result;
+}
+
 // ---- single-room game state ----
 // players: currently connected sockets, per-round stats
 let players = new Map(); // socketId -> { nickname, score, correctCount, totalTimeMs, answeredThisQuestion, mergedThisRound }
 // cumulative: persistent across rounds, keyed by nickname
 let cumulative = new Map(); // nickname -> { totalScore, totalCorrect, totalTimeMs, gamesPlayed }
+
+let hostSocketId = null; // socket.id of whoever is authoring/starting the current round
 
 let state = 'lobby'; // lobby | countdown | question | reveal | finished
 let currentQuestionIndex = -1;
@@ -69,7 +93,8 @@ function clearTimer() {
 }
 
 function broadcastLobby() {
-  io.emit('lobby:update', { players: publicPlayerList() });
+  const hostNickname = hostSocketId && players.has(hostSocketId) ? players.get(hostSocketId).nickname : null;
+  io.emit('lobby:update', { players: publicPlayerList(), hostNickname });
 }
 
 function mergeIntoCumulative(nickname, round) {
@@ -123,6 +148,13 @@ function startNewRound() {
     p.totalTimeMs = 0;
     p.answeredThisQuestion = false;
     p.mergedThisRound = false;
+  }
+
+  if (!hostSocketId || !players.has(hostSocketId)) {
+    hostSocketId = players.keys().next().value || null;
+  }
+  if (hostSocketId) {
+    io.to(hostSocketId).emit('host:assigned', { questions: QUESTIONS });
   }
 }
 
@@ -227,6 +259,12 @@ io.on('connection', (socket) => {
       mergedThisRound: false,
     });
     socket.emit('join:success', { nickname: clean });
+
+    if (!hostSocketId && state === 'lobby') {
+      hostSocketId = socket.id;
+      socket.emit('host:assigned', { questions: QUESTIONS });
+    }
+
     broadcastLobby();
 
     // let latecomers jump straight into whatever is happening right now
@@ -251,8 +289,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('startGame', () => {
-    if (!players.has(socket.id)) return;
+  socket.on('host:submitQuestions', ({ questions } = {}) => {
+    if (socket.id !== hostSocketId) return;
+    if (state !== 'lobby') return;
+
+    const sanitized = sanitizeQuestions(questions);
+    if (!sanitized) {
+      socket.emit('host:error', {
+        message: '문제 5개 모두 제목과 4개의 선택지, 정답을 입력해주세요.',
+      });
+      return;
+    }
+
+    QUESTIONS = sanitized;
     startGame();
   });
 
@@ -292,6 +341,18 @@ io.on('connection', (socket) => {
         p.mergedThisRound = true;
       }
       players.delete(socket.id);
+
+      if (socket.id === hostSocketId) {
+        hostSocketId = null;
+        if (state === 'lobby') {
+          const nextHostId = players.keys().next().value || null;
+          if (nextHostId) {
+            hostSocketId = nextHostId;
+            io.to(nextHostId).emit('host:assigned', { questions: QUESTIONS });
+          }
+        }
+      }
+
       broadcastLobby();
     }
   });

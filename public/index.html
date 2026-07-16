@@ -26,9 +26,19 @@
     <!-- 대기실 -->
     <section id="screen-lobby" class="screen hidden">
       <h2>대기실</h2>
-      <p class="subtitle">참가자가 모이면 시작 버튼을 눌러주세요</p>
+      <p class="subtitle">참가자가 모이면 호스트가 문제를 출제하고 게임을 시작합니다</p>
       <ul id="player-list" class="player-list"></ul>
-      <button id="start-btn">🚀 게임 시작</button>
+      <p id="host-label" class="host-label"></p>
+
+      <p id="waiting-for-host" class="subtitle hidden">⏳ 호스트가 문제를 출제하고 있습니다...</p>
+
+      <div id="host-panel" class="host-panel hidden">
+        <p class="subtitle">📝 문제 5개를 출제해주세요 (기본값을 그대로 써도 됩니다)</p>
+        <div id="question-author-list"></div>
+        <p id="host-error" class="error hidden"></p>
+        <button id="submit-questions-btn">✅ 문제 확정하고 게임 시작</button>
+      </div>
+
       <div id="countdown-overlay" class="countdown-overlay hidden">
         <span id="countdown-value">3</span>
       </div>
