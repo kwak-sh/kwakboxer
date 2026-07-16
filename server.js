@@ -359,8 +359,11 @@ io.on('connection', (socket) => {
 
   socket.on('host:nextQuestion', () => {
     if (socket.id !== hostSocketId) return;
-    if (state !== 'reveal') return;
-    nextQuestion();
+    if (state === 'question') {
+      endQuestion();
+    } else if (state === 'reveal') {
+      nextQuestion();
+    }
   });
 
   socket.on('submitAnswer', ({ choiceIndex, questionIndex }) => {

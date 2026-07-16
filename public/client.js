@@ -309,6 +309,10 @@ socket.on('game:answerAck', ({ correct, earnedScore, reason }) => {
     answerReason.textContent = `💡 ${reason}`;
     answerReason.classList.remove('hidden');
   }
+
+  if (isHost) {
+    hostNextBtn.classList.remove('hidden');
+  }
 });
 
 socket.on('game:reveal', ({ correctIndex, reason }) => {
