@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>넌센스 퀴즈 대전</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="corner-timer" class="corner-timer hidden">
+    <span id="timer-value">15</span><span class="timer-unit">s</span>
+  </div>
+
+  <main id="app">
+    <!-- 닉네임 입력 -->
+    <section id="screen-join" class="screen">
+      <h1>🎉 넌센스 퀴즈 대전</h1>
+      <p class="subtitle">닉네임을 입력하고 게임에 입장하세요</p>
+      <form id="join-form">
+        <input id="nickname-input" type="text" placeholder="닉네임 (최대 12자)" maxlength="12" autocomplete="off" required />
+        <button type="submit">입장하기</button>
+      </form>
+      <p id="join-error" class="error hidden"></p>
+    </section>
+
+    <!-- 대기실 -->
+    <section id="screen-lobby" class="screen hidden">
+      <h2>대기실</h2>
+      <p class="subtitle">참가자가 모이면 시작 버튼을 눌러주세요</p>
+      <ul id="player-list" class="player-list"></ul>
+      <button id="start-btn">🚀 게임 시작</button>
+      <div id="countdown-overlay" class="countdown-overlay hidden">
+        <span id="countdown-value">3</span>
+      </div>
+    </section>
+
+    <!-- 문제 화면 -->
+    <section id="screen-question" class="screen hidden">
+      <div class="progress-row">
+        <span id="question-progress">문제 1 / 5</span>
+      </div>
+      <h2 id="question-text"></h2>
+      <div id="choices" class="choices"></div>
+      <p id="answer-feedback" class="feedback hidden"></p>
+    </section>
+
+    <!-- 결과 화면 -->
+    <section id="screen-result" class="screen hidden">
+      <h2>🏆 최종 순위</h2>
+      <table class="leaderboard">
+        <thead>
+          <tr>
+            <th>순위</th>
+            <th>닉네임</th>
+            <th>맞춘 개수</th>
+            <th>정답 시간</th>
+            <th>점수</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+      <button id="play-again-btn">다시 하기</button>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+</body>
+</html>

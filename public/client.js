@@ -1,0 +1,187 @@
+const socket = io();
+
+const screens = {
+  join: document.getElementById('screen-join'),
+  lobby: document.getElementById('screen-lobby'),
+  question: document.getElementById('screen-question'),
+  result: document.getElementById('screen-result'),
+};
+
+function showScreen(name) {
+  Object.values(screens).forEach((el) => el.classList.add('hidden'));
+  screens[name].classList.remove('hidden');
+}
+
+const joinForm = document.getElementById('join-form');
+const nicknameInput = document.getElementById('nickname-input');
+const joinError = document.getElementById('join-error');
+const playerList = document.getElementById('player-list');
+const startBtn = document.getElementById('start-btn');
+const countdownOverlay = document.getElementById('countdown-overlay');
+const countdownValue = document.getElementById('countdown-value');
+const questionProgress = document.getElementById('question-progress');
+const questionText = document.getElementById('question-text');
+const choicesEl = document.getElementById('choices');
+const answerFeedback = document.getElementById('answer-feedback');
+const leaderboardBody = document.getElementById('leaderboard-body');
+const playAgainBtn = document.getElementById('play-again-btn');
+const cornerTimer = document.getElementById('corner-timer');
+const timerValue = document.getElementById('timer-value');
+
+let currentQuestionIndex = -1;
+let hasAnsweredThisQuestion = false;
+let questionTickInterval = null;
+let countdownTickInterval = null;
+
+joinForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  joinError.classList.add('hidden');
+  socket.emit('join', { nickname: nicknameInput.value.trim() });
+});
+
+socket.on('join:error', ({ message }) => {
+  joinError.textContent = message;
+  joinError.classList.remove('hidden');
+});
+
+socket.on('join:success', () => {
+  showScreen('lobby');
+});
+
+socket.on('lobby:update', ({ players }) => {
+  playerList.innerHTML = '';
+  players.forEach((name) => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    playerList.appendChild(li);
+  });
+});
+
+startBtn.addEventListener('click', () => {
+  socket.emit('startGame');
+});
+
+socket.on('game:countdown', ({ duration }) => {
+  countdownOverlay.classList.remove('hidden');
+  let remaining = Math.ceil(duration / 1000);
+  countdownValue.textContent = remaining;
+  clearInterval(countdownTickInterval);
+  countdownTickInterval = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(countdownTickInterval);
+      countdownOverlay.classList.add('hidden');
+    } else {
+      countdownValue.textContent = remaining;
+    }
+  }, 1000);
+});
+
+socket.on('game:question', ({ index, total, question, choices, duration, startTime }) => {
+  showScreen('question');
+  currentQuestionIndex = index;
+  hasAnsweredThisQuestion = false;
+
+  questionProgress.textContent = `문제 ${index + 1} / ${total}`;
+  questionText.textContent = question;
+  answerFeedback.classList.add('hidden');
+  answerFeedback.textContent = '';
+
+  choicesEl.innerHTML = '';
+  choices.forEach((choiceText, choiceIndex) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = choiceText;
+    btn.addEventListener('click', () => selectAnswer(choiceIndex, btn));
+    choicesEl.appendChild(btn);
+  });
+
+  startCornerTimer(startTime, duration);
+});
+
+function selectAnswer(choiceIndex, btnEl) {
+  if (hasAnsweredThisQuestion) return;
+  hasAnsweredThisQuestion = true;
+
+  Array.from(choicesEl.children).forEach((btn) => (btn.disabled = true));
+  btnEl.dataset.selected = 'true';
+
+  socket.emit('submitAnswer', { choiceIndex, questionIndex: currentQuestionIndex });
+}
+
+socket.on('game:answerAck', ({ correct, earnedScore }) => {
+  answerFeedback.classList.remove('hidden');
+  if (correct) {
+    answerFeedback.textContent = `✅ 정답! +${earnedScore}점`;
+    answerFeedback.style.color = '#1b6b25';
+  } else {
+    answerFeedback.textContent = '❌ 오답';
+    answerFeedback.style.color = '#a01717';
+  }
+});
+
+socket.on('game:reveal', ({ correctIndex }) => {
+  stopCornerTimer();
+  Array.from(choicesEl.children).forEach((btn, idx) => {
+    btn.disabled = true;
+    if (idx === correctIndex) {
+      btn.classList.add('correct');
+    } else if (btn.dataset.selected === 'true') {
+      btn.classList.add('wrong');
+    }
+  });
+  if (!hasAnsweredThisQuestion) {
+    answerFeedback.classList.remove('hidden');
+    answerFeedback.textContent = '⏱️ 시간 초과';
+    answerFeedback.style.color = '#a01717';
+  }
+});
+
+socket.on('game:finished', ({ leaderboard }) => {
+  stopCornerTimer();
+  showScreen('result');
+  leaderboardBody.innerHTML = '';
+  leaderboard.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${p.nickname}</td>
+      <td>${p.correctCount}</td>
+      <td>${(p.totalTimeMs / 1000).toFixed(1)}초</td>
+      <td>${p.score}</td>
+    `;
+    leaderboardBody.appendChild(tr);
+  });
+});
+
+playAgainBtn.addEventListener('click', () => {
+  socket.emit('playAgain');
+});
+
+socket.on('game:reset', () => {
+  showScreen('lobby');
+});
+
+function startCornerTimer(startTime, duration) {
+  cornerTimer.classList.remove('hidden');
+  cornerTimer.classList.remove('warning');
+  clearInterval(questionTickInterval);
+
+  function tick() {
+    const remaining = Math.max(0, duration - (Date.now() - startTime));
+    const seconds = Math.ceil(remaining / 1000);
+    timerValue.textContent = seconds;
+    cornerTimer.classList.toggle('warning', seconds <= 5);
+    if (remaining <= 0) {
+      clearInterval(questionTickInterval);
+    }
+  }
+
+  tick();
+  questionTickInterval = setInterval(tick, 100);
+}
+
+function stopCornerTimer() {
+  clearInterval(questionTickInterval);
+  cornerTimer.classList.add('hidden');
+}
