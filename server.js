@@ -20,26 +20,31 @@ const DEFAULT_QUESTIONS = [
     question: '태양계 행성 중 자전 방향이 다른 행성들과 반대인(역행 자전) 행성은?',
     choices: ['금성', '화성', '목성', '수성'],
     answerIndex: 0,
+    reason: '금성은 다른 행성과 반대 방향으로 자전하는 유일한 행성으로, 과거 거대 충돌 등이 원인으로 추정됩니다.',
   },
   {
     question: 'DNA의 이중나선 구조를 처음 밝혀낸 과학자로 널리 알려진 두 사람은?',
     choices: ['다윈과 멘델', '왓슨과 크릭', '프랭클린과 폴링', '슈뢰딩거와 하이젠베르크'],
     answerIndex: 1,
+    reason: '왓슨과 크릭은 1953년 로절린드 프랭클린의 X선 회절 데이터를 참고해 DNA 이중나선 구조를 제안했습니다.',
   },
   {
     question: '피타고라스의 정리(a²+b²=c²)가 성립하는 삼각형은?',
     choices: ['정삼각형', '이등변삼각형', '직각삼각형', '둔각삼각형'],
     answerIndex: 2,
+    reason: '피타고라스의 정리는 빗변의 제곱이 나머지 두 변의 제곱의 합과 같다는 관계로, 직각삼각형에서만 성립합니다.',
   },
   {
     question: '전통적으로 세계에서 가장 긴 강으로 알려진 강은?',
     choices: ['아마존강', '양쯔강', '미시시피강', '나일강'],
     answerIndex: 3,
+    reason: '나일강은 전통적으로 약 6,650km로 세계에서 가장 긴 강으로 알려져 있습니다 (아마존강과의 비교는 여전히 논쟁이 있습니다).',
   },
   {
     question: "원소기호 'Au'가 나타내는 금속은?",
     choices: ['은', '알루미늄', '금', '우라늄'],
     answerIndex: 2,
+    reason: "Au는 금을 뜻하는 라틴어 'aurum'에서 유래한 원소기호입니다.",
   },
 ];
 
@@ -55,12 +60,14 @@ function sanitizeQuestions(raw) {
     const choicesRaw = item && Array.isArray(item.choices) ? item.choices : [];
     const choices = choicesRaw.map((c) => (c || '').toString().trim().slice(0, 60));
     const answerIndex = Number(item && item.answerIndex);
+    const reason = (item && item.reason ? item.reason : '').toString().trim().slice(0, 300);
 
     if (!question) return null;
     if (choices.length !== 4 || choices.some((c) => !c)) return null;
     if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3) return null;
+    if (!reason) return null;
 
-    result.push({ question, choices, answerIndex });
+    result.push({ question, choices, answerIndex, reason });
   }
   return result;
 }
@@ -76,6 +83,7 @@ let hostSocketId = null; // socket.id of whoever is authoring/starting the curre
 let sessionActive = false; // true once the host has entered the password
 let sessionExplodeAt = 0;
 let explodeTimer = null;
+let gameNumber = 0; // increments every time a new session is created, never resets
 
 let state = 'lobby'; // lobby | countdown | question | reveal | finished
 let currentQuestionIndex = -1;
@@ -143,9 +151,10 @@ function cumulativeStandings() {
 function createSession() {
   sessionActive = true;
   sessionExplodeAt = Date.now() + SESSION_DURATION_MS;
+  gameNumber += 1;
   if (explodeTimer) clearTimeout(explodeTimer);
   explodeTimer = setTimeout(explodeGame, SESSION_DURATION_MS);
-  io.emit('game:sessionTimer', { explodeAt: sessionExplodeAt });
+  io.emit('game:sessionTimer', { explodeAt: sessionExplodeAt, gameNumber });
 }
 
 function explodeGame() {
@@ -251,6 +260,7 @@ function endQuestion() {
   currentRevealPayload = {
     index: currentQuestionIndex,
     correctIndex: q.answerIndex,
+    reason: q.reason,
     standings: currentStandings(),
   };
   io.emit('game:reveal', currentRevealPayload);
@@ -311,7 +321,7 @@ io.on('connection', (socket) => {
     broadcastLobby();
 
     if (sessionActive) {
-      socket.emit('game:sessionTimer', { explodeAt: sessionExplodeAt });
+      socket.emit('game:sessionTimer', { explodeAt: sessionExplodeAt, gameNumber });
     }
 
     // let latecomers jump straight into whatever is happening right now
@@ -366,6 +376,12 @@ io.on('connection', (socket) => {
     startGame();
   });
 
+  socket.on('host:nextQuestion', () => {
+    if (socket.id !== hostSocketId) return;
+    if (state !== 'reveal') return;
+    nextQuestion();
+  });
+
   socket.on('submitAnswer', ({ choiceIndex, questionIndex }) => {
     const player = players.get(socket.id);
     if (!player) return;
@@ -389,7 +405,7 @@ io.on('connection', (socket) => {
       player.totalTimeMs += QUESTION_DURATION_MS;
     }
 
-    socket.emit('game:answerAck', { correct, earnedScore, correctIndex: q.answerIndex });
+    socket.emit('game:answerAck', { correct, earnedScore, correctIndex: q.answerIndex, reason: q.reason });
 
     const allAnswered = players.size > 0 && Array.from(players.values()).every((p) => p.answeredThisQuestion);
     if (allAnswered) {

@@ -39,6 +39,12 @@ const cornerTimer = document.getElementById('corner-timer');
 const timerValue = document.getElementById('timer-value');
 const explosionTimer = document.getElementById('explosion-timer');
 const explosionValue = document.getElementById('explosion-value');
+const gameNumberLabel = document.getElementById('game-number-label');
+const participantsPanel = document.getElementById('participants-panel');
+const participantsCount = document.getElementById('participants-count');
+const participantsNames = document.getElementById('participants-names');
+const answerReason = document.getElementById('answer-reason');
+const hostNextBtn = document.getElementById('host-next-btn');
 
 let currentQuestionIndex = -1;
 let hasAnsweredThisQuestion = false;
@@ -60,6 +66,7 @@ socket.on('join:error', ({ message }) => {
 
 socket.on('join:success', () => {
   showScreen('lobby');
+  participantsPanel.classList.remove('hidden');
 });
 
 socket.on('lobby:update', ({ players, hostNickname }) => {
@@ -75,6 +82,9 @@ socket.on('lobby:update', ({ players, hostNickname }) => {
   if (!isHost) {
     waitingForHost.classList.toggle('hidden', !hostNickname);
   }
+
+  participantsCount.textContent = players.length;
+  participantsNames.textContent = players.join(', ');
 });
 
 socket.on('host:passwordRequired', () => {
@@ -111,7 +121,8 @@ socket.on('host:error', ({ message }) => {
   hostError.classList.remove('hidden');
 });
 
-socket.on('game:sessionTimer', ({ explodeAt }) => {
+socket.on('game:sessionTimer', ({ explodeAt, gameNumber }) => {
+  gameNumberLabel.textContent = `${gameNumber}번째 게임 `;
   startExplosionTimer(explodeAt);
 });
 
@@ -132,6 +143,7 @@ socket.on('game:exploded', () => {
   waitingForHost.classList.add('hidden');
   hostPasswordPanel.classList.add('hidden');
   hostPanel.classList.add('hidden');
+  participantsPanel.classList.add('hidden');
 
   showScreen('join');
 });
@@ -203,6 +215,15 @@ function renderAuthoringForm(questions) {
     });
 
     block.appendChild(choicesWrap);
+
+    const reasonInput = document.createElement('textarea');
+    reasonInput.className = 'qa-reason';
+    reasonInput.maxLength = 300;
+    reasonInput.rows = 2;
+    reasonInput.placeholder = '왜 이 답이 정답인지 이유를 적어주세요';
+    reasonInput.value = q.reason || '';
+    block.appendChild(reasonInput);
+
     questionAuthorList.appendChild(block);
   });
 }
@@ -213,7 +234,8 @@ function collectQuestionsFromForm() {
     const choices = Array.from(block.querySelectorAll('.qa-choice')).map((el) => el.value.trim());
     const checkedRadio = block.querySelector(`input[name="qa-correct-${qi}"]:checked`);
     const answerIndex = checkedRadio ? Number(checkedRadio.value) : -1;
-    return { question, choices, answerIndex };
+    const reason = block.querySelector('.qa-reason').value.trim();
+    return { question, choices, answerIndex, reason };
   });
 }
 
@@ -247,6 +269,9 @@ socket.on('game:question', ({ index, total, question, choices, duration, startTi
   questionText.textContent = question;
   answerFeedback.classList.add('hidden');
   answerFeedback.textContent = '';
+  answerReason.classList.add('hidden');
+  answerReason.textContent = '';
+  hostNextBtn.classList.add('hidden');
 
   choicesEl.innerHTML = '';
   choices.forEach((choiceText, choiceIndex) => {
@@ -270,7 +295,7 @@ function selectAnswer(choiceIndex, btnEl) {
   socket.emit('submitAnswer', { choiceIndex, questionIndex: currentQuestionIndex });
 }
 
-socket.on('game:answerAck', ({ correct, earnedScore }) => {
+socket.on('game:answerAck', ({ correct, earnedScore, reason }) => {
   answerFeedback.classList.remove('hidden');
   if (correct) {
     answerFeedback.textContent = `✅ 정답! +${earnedScore}점`;
@@ -279,9 +304,14 @@ socket.on('game:answerAck', ({ correct, earnedScore }) => {
     answerFeedback.textContent = '❌ 오답';
     answerFeedback.style.color = '#a01717';
   }
+
+  if (reason) {
+    answerReason.textContent = `💡 ${reason}`;
+    answerReason.classList.remove('hidden');
+  }
 });
 
-socket.on('game:reveal', ({ correctIndex }) => {
+socket.on('game:reveal', ({ correctIndex, reason }) => {
   stopCornerTimer();
   Array.from(choicesEl.children).forEach((btn, idx) => {
     btn.disabled = true;
@@ -296,6 +326,20 @@ socket.on('game:reveal', ({ correctIndex }) => {
     answerFeedback.textContent = '⏱️ 시간 초과';
     answerFeedback.style.color = '#a01717';
   }
+
+  if (reason) {
+    answerReason.textContent = `💡 ${reason}`;
+    answerReason.classList.remove('hidden');
+  }
+
+  if (isHost) {
+    hostNextBtn.classList.remove('hidden');
+  }
+});
+
+hostNextBtn.addEventListener('click', () => {
+  hostNextBtn.classList.add('hidden');
+  socket.emit('host:nextQuestion');
 });
 
 socket.on('game:finished', ({ roundLeaderboard, cumulativeLeaderboard }) => {

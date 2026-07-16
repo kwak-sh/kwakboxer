@@ -12,7 +12,12 @@
   </div>
 
   <div id="explosion-timer" class="explosion-timer hidden">
-    💣 <span id="explosion-value">5:00</span>
+    <span id="game-number-label"></span>💣 <span id="explosion-value">5:00</span>
+  </div>
+
+  <div id="participants-panel" class="participants-panel hidden">
+    <div class="participants-title">👥 참여자 (<span id="participants-count">0</span>)</div>
+    <div id="participants-names" class="participants-names"></div>
   </div>
 
   <main id="app">
@@ -65,6 +70,8 @@
       <h2 id="question-text"></h2>
       <div id="choices" class="choices"></div>
       <p id="answer-feedback" class="feedback hidden"></p>
+      <p id="answer-reason" class="reason hidden"></p>
+      <button id="host-next-btn" class="hidden">다음 문제 →</button>
     </section>
 
     <!-- 결과 화면 -->
