@@ -15,54 +15,50 @@ const LOBBY_COUNTDOWN_MS = 3000;
 
 const QUESTIONS = [
   {
-    question: '세상에서 가장 뜨거운 과일은?',
-    choices: ['천도복숭아', '망고', '자몽', '파인애플'],
+    question: '태양계 행성 중 자전 방향이 다른 행성들과 반대인(역행 자전) 행성은?',
+    choices: ['금성', '화성', '목성', '수성'],
     answerIndex: 0,
   },
   {
-    question: '소가 웃으면 뭐가 될까?',
-    choices: ['우유', '우습다', '소극장', '소풍'],
+    question: 'DNA의 이중나선 구조를 처음 밝혀낸 과학자로 널리 알려진 두 사람은?',
+    choices: ['다윈과 멘델', '왓슨과 크릭', '프랭클린과 폴링', '슈뢰딩거와 하이젠베르크'],
     answerIndex: 1,
   },
   {
-    question: '세상에서 가장 아픈 나라는?',
-    choices: ['모나코', '아파니스탄', '칠레', '이집트'],
-    answerIndex: 1,
-  },
-  {
-    question: '세상에서 가장 추운 바다는?',
-    choices: ['홍해', '지중해', '썰렁해', '동해'],
+    question: '피타고라스의 정리(a²+b²=c²)가 성립하는 삼각형은?',
+    choices: ['정삼각형', '이등변삼각형', '직각삼각형', '둔각삼각형'],
     answerIndex: 2,
   },
   {
-    question: '도둑이 가장 싫어하는 아이스크림은?',
-    choices: ['누가바', '메로나', '설레임', '스크류바'],
-    answerIndex: 0,
+    question: '전통적으로 세계에서 가장 긴 강으로 알려진 강은?',
+    choices: ['아마존강', '양쯔강', '미시시피강', '나일강'],
+    answerIndex: 3,
+  },
+  {
+    question: "원소기호 'Au'가 나타내는 금속은?",
+    choices: ['은', '알루미늄', '금', '우라늄'],
+    answerIndex: 2,
   },
 ];
 
 // ---- single-room game state ----
-let players = new Map(); // socketId -> { nickname, score, correctCount, totalTimeMs, answeredThisQuestion }
+// players: currently connected sockets, per-round stats
+let players = new Map(); // socketId -> { nickname, score, correctCount, totalTimeMs, answeredThisQuestion, mergedThisRound }
+// cumulative: persistent across rounds, keyed by nickname
+let cumulative = new Map(); // nickname -> { totalScore, totalCorrect, totalTimeMs, gamesPlayed }
+
 let state = 'lobby'; // lobby | countdown | question | reveal | finished
 let currentQuestionIndex = -1;
 let questionStartTime = 0;
+let countdownStartTime = 0;
 let questionTimer = null;
+
+let currentQuestionPayload = null;
+let currentRevealPayload = null;
+let currentFinishedPayload = null;
 
 function publicPlayerList() {
   return Array.from(players.values()).map((p) => p.nickname);
-}
-
-function resetGame() {
-  state = 'lobby';
-  currentQuestionIndex = -1;
-  questionStartTime = 0;
-  for (const p of players.values()) {
-    p.score = 0;
-    p.correctCount = 0;
-    p.totalTimeMs = 0;
-    p.answeredThisQuestion = false;
-  }
-  if (questionTimer) clearTimeout(questionTimer);
 }
 
 function clearTimer() {
@@ -76,9 +72,64 @@ function broadcastLobby() {
   io.emit('lobby:update', { players: publicPlayerList() });
 }
 
+function mergeIntoCumulative(nickname, round) {
+  const existing = cumulative.get(nickname) || {
+    totalScore: 0,
+    totalCorrect: 0,
+    totalTimeMs: 0,
+    gamesPlayed: 0,
+  };
+  existing.totalScore += round.score;
+  existing.totalCorrect += round.correctCount;
+  existing.totalTimeMs += round.totalTimeMs;
+  existing.gamesPlayed += 1;
+  cumulative.set(nickname, existing);
+}
+
+function currentStandings() {
+  return Array.from(players.values())
+    .map((p) => ({
+      nickname: p.nickname,
+      score: p.score,
+      correctCount: p.correctCount,
+      totalTimeMs: p.totalTimeMs,
+    }))
+    .sort((a, b) => b.score - a.score || b.correctCount - a.correctCount || a.totalTimeMs - b.totalTimeMs);
+}
+
+function cumulativeStandings() {
+  return Array.from(cumulative.entries())
+    .map(([nickname, c]) => ({
+      nickname,
+      totalScore: c.totalScore,
+      totalCorrect: c.totalCorrect,
+      totalTimeMs: c.totalTimeMs,
+      gamesPlayed: c.gamesPlayed,
+    }))
+    .sort((a, b) => b.totalScore - a.totalScore || b.totalCorrect - a.totalCorrect || a.totalTimeMs - b.totalTimeMs);
+}
+
+function startNewRound() {
+  clearTimer();
+  state = 'lobby';
+  currentQuestionIndex = -1;
+  questionStartTime = 0;
+  currentQuestionPayload = null;
+  currentRevealPayload = null;
+  currentFinishedPayload = null;
+  for (const p of players.values()) {
+    p.score = 0;
+    p.correctCount = 0;
+    p.totalTimeMs = 0;
+    p.answeredThisQuestion = false;
+    p.mergedThisRound = false;
+  }
+}
+
 function startGame() {
   if (state !== 'lobby' || players.size === 0) return;
   state = 'countdown';
+  countdownStartTime = Date.now();
   io.emit('game:countdown', { duration: LOBBY_COUNTDOWN_MS });
   questionTimer = setTimeout(() => {
     currentQuestionIndex = -1;
@@ -100,14 +151,16 @@ function nextQuestion() {
   for (const p of players.values()) p.answeredThisQuestion = false;
 
   const q = QUESTIONS[currentQuestionIndex];
-  io.emit('game:question', {
+  currentQuestionPayload = {
     index: currentQuestionIndex,
     total: QUESTIONS.length,
     question: q.question,
     choices: q.choices,
     duration: QUESTION_DURATION_MS,
     startTime: questionStartTime,
-  });
+  };
+  currentRevealPayload = null;
+  io.emit('game:question', currentQuestionPayload);
 
   questionTimer = setTimeout(() => endQuestion(), QUESTION_DURATION_MS);
 }
@@ -124,38 +177,36 @@ function endQuestion() {
   }
 
   const q = QUESTIONS[currentQuestionIndex];
-  io.emit('game:reveal', {
+  currentRevealPayload = {
     index: currentQuestionIndex,
     correctIndex: q.answerIndex,
     standings: currentStandings(),
-  });
+  };
+  io.emit('game:reveal', currentRevealPayload);
 
   questionTimer = setTimeout(() => nextQuestion(), REVEAL_DURATION_MS);
-}
-
-function currentStandings() {
-  return Array.from(players.values())
-    .map((p) => ({
-      nickname: p.nickname,
-      score: p.score,
-      correctCount: p.correctCount,
-      totalTimeMs: p.totalTimeMs,
-    }))
-    .sort((a, b) => b.score - a.score || b.correctCount - a.correctCount || a.totalTimeMs - b.totalTimeMs);
 }
 
 function finishGame() {
   clearTimer();
   state = 'finished';
-  io.emit('game:finished', { leaderboard: currentStandings() });
+
+  for (const p of players.values()) {
+    if (!p.mergedThisRound) {
+      mergeIntoCumulative(p.nickname, p);
+      p.mergedThisRound = true;
+    }
+  }
+
+  currentFinishedPayload = {
+    roundLeaderboard: currentStandings(),
+    cumulativeLeaderboard: cumulativeStandings(),
+  };
+  io.emit('game:finished', currentFinishedPayload);
 }
 
 io.on('connection', (socket) => {
   socket.on('join', ({ nickname }) => {
-    if (state !== 'lobby') {
-      socket.emit('join:error', { message: '게임이 이미 진행 중입니다. 잠시 후 다시 시도해주세요.' });
-      return;
-    }
     const clean = (nickname || '').toString().trim().slice(0, 12);
     if (!clean) {
       socket.emit('join:error', { message: '닉네임을 입력해주세요.' });
@@ -166,15 +217,38 @@ io.on('connection', (socket) => {
       socket.emit('join:error', { message: '이미 사용중인 닉네임입니다.' });
       return;
     }
+
     players.set(socket.id, {
       nickname: clean,
       score: 0,
       correctCount: 0,
       totalTimeMs: 0,
       answeredThisQuestion: false,
+      mergedThisRound: false,
     });
     socket.emit('join:success', { nickname: clean });
     broadcastLobby();
+
+    // let latecomers jump straight into whatever is happening right now
+    switch (state) {
+      case 'countdown': {
+        const remaining = Math.max(0, LOBBY_COUNTDOWN_MS - (Date.now() - countdownStartTime));
+        socket.emit('game:countdown', { duration: remaining });
+        break;
+      }
+      case 'question':
+        if (currentQuestionPayload) socket.emit('game:question', currentQuestionPayload);
+        break;
+      case 'reveal':
+        if (currentQuestionPayload) socket.emit('game:question', currentQuestionPayload);
+        if (currentRevealPayload) socket.emit('game:reveal', currentRevealPayload);
+        break;
+      case 'finished':
+        if (currentFinishedPayload) socket.emit('game:finished', currentFinishedPayload);
+        break;
+      default:
+        break;
+    }
   });
 
   socket.on('startGame', () => {
@@ -209,18 +283,24 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (players.has(socket.id)) {
+    const p = players.get(socket.id);
+    if (p) {
+      // a round is under way and this player never got merged into the
+      // cumulative totals yet — fold in whatever they earned so far
+      if (currentQuestionIndex >= 0 && !p.mergedThisRound) {
+        mergeIntoCumulative(p.nickname, p);
+        p.mergedThisRound = true;
+      }
       players.delete(socket.id);
-      if (state === 'lobby') broadcastLobby();
+      broadcastLobby();
     }
   });
 
   socket.on('playAgain', () => {
-    if (state === 'finished') {
-      resetGame();
-      broadcastLobby();
-      io.emit('game:reset');
-    }
+    if (state !== 'finished') return;
+    startNewRound();
+    broadcastLobby();
+    io.emit('game:reset');
   });
 });
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>넌센스 퀴즈 대전</title>
+  <title>ODOY 퀴즈</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -14,8 +14,8 @@
   <main id="app">
     <!-- 닉네임 입력 -->
     <section id="screen-join" class="screen">
-      <h1>🎉 넌센스 퀴즈 대전</h1>
-      <p class="subtitle">닉네임을 입력하고 게임에 입장하세요</p>
+      <h1>🧠 ODOY 퀴즈</h1>
+      <p class="subtitle">닉네임을 입력하고 게임에 입장하세요<br />게임이 진행 중이어도 언제든 참여할 수 있어요</p>
       <form id="join-form">
         <input id="nickname-input" type="text" placeholder="닉네임 (최대 12자)" maxlength="12" autocomplete="off" required />
         <button type="submit">입장하기</button>
@@ -46,7 +46,7 @@
 
     <!-- 결과 화면 -->
     <section id="screen-result" class="screen hidden">
-      <h2>🏆 최종 순위</h2>
+      <h2>🏆 이번 라운드 순위</h2>
       <table class="leaderboard">
         <thead>
           <tr>
@@ -57,9 +57,25 @@
             <th>점수</th>
           </tr>
         </thead>
-        <tbody id="leaderboard-body"></tbody>
+        <tbody id="round-leaderboard-body"></tbody>
       </table>
-      <button id="play-again-btn">다시 하기</button>
+
+      <h2 class="section-title">👑 전체 누적 순위</h2>
+      <table class="leaderboard">
+        <thead>
+          <tr>
+            <th>순위</th>
+            <th>닉네임</th>
+            <th>참여 횟수</th>
+            <th>총 맞춘 개수</th>
+            <th>누적 시간</th>
+            <th>누적 점수</th>
+          </tr>
+        </thead>
+        <tbody id="cumulative-leaderboard-body"></tbody>
+      </table>
+
+      <button id="play-again-btn">🔁 다음 라운드 시작</button>
     </section>
   </main>
 

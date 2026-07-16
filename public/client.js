@@ -23,7 +23,8 @@ const questionProgress = document.getElementById('question-progress');
 const questionText = document.getElementById('question-text');
 const choicesEl = document.getElementById('choices');
 const answerFeedback = document.getElementById('answer-feedback');
-const leaderboardBody = document.getElementById('leaderboard-body');
+const roundLeaderboardBody = document.getElementById('round-leaderboard-body');
+const cumulativeLeaderboardBody = document.getElementById('cumulative-leaderboard-body');
 const playAgainBtn = document.getElementById('play-again-btn');
 const cornerTimer = document.getElementById('corner-timer');
 const timerValue = document.getElementById('timer-value');
@@ -137,11 +138,12 @@ socket.on('game:reveal', ({ correctIndex }) => {
   }
 });
 
-socket.on('game:finished', ({ leaderboard }) => {
+socket.on('game:finished', ({ roundLeaderboard, cumulativeLeaderboard }) => {
   stopCornerTimer();
   showScreen('result');
-  leaderboardBody.innerHTML = '';
-  leaderboard.forEach((p, i) => {
+
+  roundLeaderboardBody.innerHTML = '';
+  roundLeaderboard.forEach((p, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${i + 1}</td>
@@ -150,7 +152,21 @@ socket.on('game:finished', ({ leaderboard }) => {
       <td>${(p.totalTimeMs / 1000).toFixed(1)}초</td>
       <td>${p.score}</td>
     `;
-    leaderboardBody.appendChild(tr);
+    roundLeaderboardBody.appendChild(tr);
+  });
+
+  cumulativeLeaderboardBody.innerHTML = '';
+  cumulativeLeaderboard.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${p.nickname}</td>
+      <td>${p.gamesPlayed}</td>
+      <td>${p.totalCorrect}</td>
+      <td>${(p.totalTimeMs / 1000).toFixed(1)}초</td>
+      <td>${p.totalScore}</td>
+    `;
+    cumulativeLeaderboardBody.appendChild(tr);
   });
 });
 

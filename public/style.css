@@ -188,6 +188,10 @@ button:hover {
   opacity: 0.8;
 }
 
+.section-title {
+  margin-top: 28px;
+}
+
 .leaderboard {
   width: 100%;
   border-collapse: collapse;
