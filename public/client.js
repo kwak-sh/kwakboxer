@@ -18,6 +18,10 @@ const joinError = document.getElementById('join-error');
 const playerList = document.getElementById('player-list');
 const hostLabel = document.getElementById('host-label');
 const waitingForHost = document.getElementById('waiting-for-host');
+const hostPasswordPanel = document.getElementById('host-password-panel');
+const hostPasswordForm = document.getElementById('host-password-form');
+const hostPasswordInput = document.getElementById('host-password-input');
+const hostPasswordError = document.getElementById('host-password-error');
 const hostPanel = document.getElementById('host-panel');
 const questionAuthorList = document.getElementById('question-author-list');
 const hostError = document.getElementById('host-error');
@@ -33,11 +37,14 @@ const cumulativeLeaderboardBody = document.getElementById('cumulative-leaderboar
 const playAgainBtn = document.getElementById('play-again-btn');
 const cornerTimer = document.getElementById('corner-timer');
 const timerValue = document.getElementById('timer-value');
+const explosionTimer = document.getElementById('explosion-timer');
+const explosionValue = document.getElementById('explosion-value');
 
 let currentQuestionIndex = -1;
 let hasAnsweredThisQuestion = false;
 let questionTickInterval = null;
 let countdownTickInterval = null;
+let explosionTickInterval = null;
 let isHost = false;
 
 joinForm.addEventListener('submit', (e) => {
@@ -70,9 +77,30 @@ socket.on('lobby:update', ({ players, hostNickname }) => {
   }
 });
 
+socket.on('host:passwordRequired', () => {
+  isHost = true;
+  waitingForHost.classList.add('hidden');
+  hostPanel.classList.add('hidden');
+  hostPasswordPanel.classList.remove('hidden');
+  hostPasswordError.classList.add('hidden');
+  hostPasswordInput.value = '';
+});
+
+hostPasswordForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  hostPasswordError.classList.add('hidden');
+  socket.emit('host:verifyPassword', { password: hostPasswordInput.value });
+});
+
+socket.on('host:passwordError', ({ message }) => {
+  hostPasswordError.textContent = message;
+  hostPasswordError.classList.remove('hidden');
+});
+
 socket.on('host:assigned', ({ questions }) => {
   isHost = true;
   waitingForHost.classList.add('hidden');
+  hostPasswordPanel.classList.add('hidden');
   hostPanel.classList.remove('hidden');
   hostError.classList.add('hidden');
   renderAuthoringForm(questions);
@@ -82,6 +110,56 @@ socket.on('host:error', ({ message }) => {
   hostError.textContent = message;
   hostError.classList.remove('hidden');
 });
+
+socket.on('game:sessionTimer', ({ explodeAt }) => {
+  startExplosionTimer(explodeAt);
+});
+
+socket.on('game:exploded', () => {
+  stopCornerTimer();
+  stopExplosionTimer();
+  clearInterval(countdownTickInterval);
+  countdownOverlay.classList.add('hidden');
+
+  isHost = false;
+  currentQuestionIndex = -1;
+  hasAnsweredThisQuestion = false;
+
+  nicknameInput.value = '';
+  joinError.textContent = '⏰ 게임 시간이 종료되어 초기화되었습니다. 다시 입장해주세요.';
+  joinError.classList.remove('hidden');
+
+  waitingForHost.classList.add('hidden');
+  hostPasswordPanel.classList.add('hidden');
+  hostPanel.classList.add('hidden');
+
+  showScreen('join');
+});
+
+function startExplosionTimer(explodeAt) {
+  explosionTimer.classList.remove('hidden');
+  clearInterval(explosionTickInterval);
+
+  function tick() {
+    const remaining = Math.max(0, explodeAt - Date.now());
+    const totalSeconds = Math.ceil(remaining / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    explosionValue.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    explosionTimer.classList.toggle('warning', totalSeconds <= 30);
+    if (remaining <= 0) {
+      clearInterval(explosionTickInterval);
+    }
+  }
+
+  tick();
+  explosionTickInterval = setInterval(tick, 250);
+}
+
+function stopExplosionTimer() {
+  clearInterval(explosionTickInterval);
+  explosionTimer.classList.add('hidden');
+}
 
 function renderAuthoringForm(questions) {
   questionAuthorList.innerHTML = '';

@@ -11,6 +11,10 @@
     <span id="timer-value">15</span><span class="timer-unit">s</span>
   </div>
 
+  <div id="explosion-timer" class="explosion-timer hidden">
+    💣 <span id="explosion-value">5:00</span>
+  </div>
+
   <main id="app">
     <!-- 닉네임 입력 -->
     <section id="screen-join" class="screen">
@@ -31,6 +35,15 @@
       <p id="host-label" class="host-label"></p>
 
       <p id="waiting-for-host" class="subtitle hidden">⏳ 호스트가 문제를 출제하고 있습니다...</p>
+
+      <div id="host-password-panel" class="hidden">
+        <p class="subtitle">🔒 게임을 생성하려면 호스트 비밀번호를 입력하세요</p>
+        <form id="host-password-form">
+          <input id="host-password-input" type="password" placeholder="비밀번호" autocomplete="off" />
+          <button type="submit">입력</button>
+        </form>
+        <p id="host-password-error" class="error hidden"></p>
+      </div>
 
       <div id="host-panel" class="host-panel hidden">
         <p class="subtitle">📝 문제 5개를 출제해주세요 (기본값을 그대로 써도 됩니다)</p>

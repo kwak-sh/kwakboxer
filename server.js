@@ -12,6 +12,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const QUESTION_DURATION_MS = 15000;
 const REVEAL_DURATION_MS = 4000;
 const LOBBY_COUNTDOWN_MS = 3000;
+const HOST_PASSWORD = '1234';
+const SESSION_DURATION_MS = 5 * 60 * 1000;
 
 const DEFAULT_QUESTIONS = [
   {
@@ -70,6 +72,10 @@ let players = new Map(); // socketId -> { nickname, score, correctCount, totalTi
 let cumulative = new Map(); // nickname -> { totalScore, totalCorrect, totalTimeMs, gamesPlayed }
 
 let hostSocketId = null; // socket.id of whoever is authoring/starting the current round
+
+let sessionActive = false; // true once the host has entered the password
+let sessionExplodeAt = 0;
+let explodeTimer = null;
 
 let state = 'lobby'; // lobby | countdown | question | reveal | finished
 let currentQuestionIndex = -1;
@@ -132,6 +138,39 @@ function cumulativeStandings() {
       gamesPlayed: c.gamesPlayed,
     }))
     .sort((a, b) => b.totalScore - a.totalScore || b.totalCorrect - a.totalCorrect || a.totalTimeMs - b.totalTimeMs);
+}
+
+function createSession() {
+  sessionActive = true;
+  sessionExplodeAt = Date.now() + SESSION_DURATION_MS;
+  if (explodeTimer) clearTimeout(explodeTimer);
+  explodeTimer = setTimeout(explodeGame, SESSION_DURATION_MS);
+  io.emit('game:sessionTimer', { explodeAt: sessionExplodeAt });
+}
+
+function explodeGame() {
+  clearTimer();
+  if (explodeTimer) {
+    clearTimeout(explodeTimer);
+    explodeTimer = null;
+  }
+
+  sessionActive = false;
+  sessionExplodeAt = 0;
+
+  players = new Map();
+  cumulative = new Map();
+  hostSocketId = null;
+
+  state = 'lobby';
+  currentQuestionIndex = -1;
+  questionStartTime = 0;
+  currentQuestionPayload = null;
+  currentRevealPayload = null;
+  currentFinishedPayload = null;
+  QUESTIONS = DEFAULT_QUESTIONS.map((q) => ({ ...q, choices: [...q.choices] }));
+
+  io.emit('game:exploded');
 }
 
 function startNewRound() {
@@ -262,10 +301,18 @@ io.on('connection', (socket) => {
 
     if (!hostSocketId && state === 'lobby') {
       hostSocketId = socket.id;
-      socket.emit('host:assigned', { questions: QUESTIONS });
+      if (sessionActive) {
+        socket.emit('host:assigned', { questions: QUESTIONS });
+      } else {
+        socket.emit('host:passwordRequired');
+      }
     }
 
     broadcastLobby();
+
+    if (sessionActive) {
+      socket.emit('game:sessionTimer', { explodeAt: sessionExplodeAt });
+    }
 
     // let latecomers jump straight into whatever is happening right now
     switch (state) {
@@ -289,9 +336,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('host:verifyPassword', ({ password } = {}) => {
+    if (socket.id !== hostSocketId) return;
+    if (sessionActive) return;
+
+    if (password !== HOST_PASSWORD) {
+      socket.emit('host:passwordError', { message: '비밀번호가 올바르지 않습니다.' });
+      return;
+    }
+
+    createSession();
+    socket.emit('host:assigned', { questions: QUESTIONS });
+  });
+
   socket.on('host:submitQuestions', ({ questions } = {}) => {
     if (socket.id !== hostSocketId) return;
     if (state !== 'lobby') return;
+    if (!sessionActive) return;
 
     const sanitized = sanitizeQuestions(questions);
     if (!sanitized) {
@@ -329,6 +390,11 @@ io.on('connection', (socket) => {
     }
 
     socket.emit('game:answerAck', { correct, earnedScore, correctIndex: q.answerIndex });
+
+    const allAnswered = players.size > 0 && Array.from(players.values()).every((p) => p.answeredThisQuestion);
+    if (allAnswered) {
+      endQuestion();
+    }
   });
 
   socket.on('disconnect', () => {
@@ -348,7 +414,11 @@ io.on('connection', (socket) => {
           const nextHostId = players.keys().next().value || null;
           if (nextHostId) {
             hostSocketId = nextHostId;
-            io.to(nextHostId).emit('host:assigned', { questions: QUESTIONS });
+            if (sessionActive) {
+              io.to(nextHostId).emit('host:assigned', { questions: QUESTIONS });
+            } else {
+              io.to(nextHostId).emit('host:passwordRequired');
+            }
           }
         }
       }

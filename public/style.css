@@ -241,6 +241,43 @@ button:hover {
   background: #d32f2f;
 }
 
+.explosion-timer {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 18px;
+  font-weight: 700;
+  z-index: 30;
+  text-align: center;
+}
+
+.explosion-timer.warning {
+  background: #d32f2f;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+#host-password-panel form {
+  display: flex;
+  gap: 8px;
+}
+
+#host-password-input {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+}
+
 .timer-unit {
   font-size: 13px;
   margin-left: 2px;
